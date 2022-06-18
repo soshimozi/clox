@@ -1,2 +1,7 @@
 build
 .vscode
+.vs
+x64
+clox.vcxproj
+clox.vcxproj.user
+clox.vcxproj.filters

@@ -7,6 +7,8 @@
 #include "debug.h"
 #include "vm.h"
 
+#define _CRT_SECURE_NO_WARNINGS
+
 static void repl() {
 	char line[1024];
 	for(;;) {
@@ -22,6 +24,7 @@ static void repl() {
 }
 
 static char* readFile(const char* path) {
+#pragma warning(suppress : 4996)
 	FILE* file = fopen(path, "rb");
 	if(file == NULL) {
 		fprintf(stderr, "Could not open file \"%s\".\n", path);

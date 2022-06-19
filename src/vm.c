@@ -2,7 +2,6 @@
 #include <stdio.h>
 
 #include "common.h"
-#include "debug.h"
 #include "vm.h"
 
 #include <string.h>
@@ -20,7 +19,7 @@ static void resetStack() {
 static void runtimeError(const char* format, ...) {
 	va_list args;
 	va_start(args, format);
-	vfprintf(stderr, format, args);
+	vfprintf(stderr, format, args);  // NOLINT(clang-diagnostic-format-nonliteral)
 	va_end(args);
 	fputs("\n", stderr);
 
@@ -30,14 +29,14 @@ static void runtimeError(const char* format, ...) {
 	resetStack();
 }
 
-void initVM() {
+void initVm(void) {
 	resetStack();
 	vm.objects = NULL;
 	initTable(&vm.globals);
 	initTable(&vm.strings);
 }
 
-void freeVM() {
+void freeVm(void) {
 	freeTable(&vm.globals);
 	freeTable(&vm.strings);
 	freeObjects();
@@ -103,7 +102,9 @@ push(valueType(a op b)); \
 		printf("\n");
 		disassembleInstruction(vm.chunk, (int)(vm.ip - vm.chunk->code));
 #endif		
+		// ReSharper disable once CppEntityAssignedButNoRead
 		uint8_t instruction;
+		// ReSharper disable once CppDefaultCaseNotHandledInSwitchStatement
 		switch(instruction = READ_BYTE()) {
 			case OP_CONSTANT: {
 				const Value constant = READ_CONSTANT();

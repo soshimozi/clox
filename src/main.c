@@ -1,17 +1,13 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 
-#include "common.h"
-#include "chunk.h"
-#include "debug.h"
 #include "vm.h"
 
-#define _CRT_SECURE_NO_WARNINGS
+#define WINDOWS
 
 static void repl() {
-	char line[1024];
 	for(;;) {
+		char line[1024];
 		printf("> ");
 
 		if(!fgets(line, sizeof(line), stdin)) {
@@ -25,26 +21,34 @@ static void repl() {
 
 static char* readFile(const char* path) {
 #pragma warning(suppress : 4996)
-	FILE* file = fopen(path, "rb");
+	// ReSharper disable once CppDeprecatedEntity
+	FILE* file;
+
+#ifdef WINDOWS
+	fopen_s(&file, path, "rb");  // NOLINT(clang-diagnostic-deprecated-declarations)
+#else
+	file = fopen(path, "rb");
+#endif
+
 	if(file == NULL) {
 		fprintf(stderr, "Could not open file \"%s\".\n", path);
-		exit(74);
+		exit(74);  // NOLINT(concurrency-mt-unsafe)
 	}
 
 	fseek(file, 0L, SEEK_END);
-	size_t fileSize = ftell(file);
+	const size_t fileSize = ftell(file);
 	rewind(file);
 
 	char* buffer = (char*)malloc(fileSize + 1);
 	if(buffer == NULL) {
 		fprintf(stderr, "Out of memory reading \"%s\".\n", path);
-		exit(74);
+		exit(74); // NOLINT(concurrency-mt-unsafe)
 	}
 	
-	size_t bytesRead = fread(buffer, sizeof(char), fileSize, file);
+	const size_t bytesRead = fread(buffer, sizeof(char), fileSize, file);
 	if(bytesRead < fileSize) {
 		fprintf(stderr, "Could not read file \"%s\".\n", path);
-		exit(74);
+		exit(74); // NOLINT(concurrency-mt-unsafe)
 	}
 
 	buffer[bytesRead] = '\0';
@@ -55,17 +59,17 @@ static char* readFile(const char* path) {
 
 static void runFile(const char* path) {
 	char* source = readFile(path);
-	InterpretResult result = interpret(source);
+	const InterpretResult result = interpret(source);
 	free(source);
 
-	if(result == INTERPRET_COMPILE_ERROR) exit(65);
-	if(result == INTERPRET_RUNTIME_ERROR) exit(70);
+	if(result == INTERPRET_COMPILE_ERROR) exit(65); // NOLINT(concurrency-mt-unsafe)
+	if(result == INTERPRET_RUNTIME_ERROR) exit(70); // NOLINT(concurrency-mt-unsafe)
 }
 
 
 
-int main(int argc, const char *argv[]) {
-	initVM();
+int main(const int argc, const char *argv[]) {
+	initVm();
 
 	if(argc == 1) {
 		repl();
@@ -73,7 +77,7 @@ int main(int argc, const char *argv[]) {
 		runFile(argv[1]);
 	} else {
 		fprintf(stderr, "Usage: clox [path]\n");
-		exit(64);
+		exit(64); // NOLINT(concurrency-mt-unsafe)
 	}
 
 	// Chunk chunk;
@@ -102,7 +106,7 @@ int main(int argc, const char *argv[]) {
 
 	// freeChunk(&chunk);
 
-	freeVM();
+	freeVm();
 
 	return 0;
 }

@@ -68,7 +68,7 @@ static Chunk* currentChunk() {
 	return compilingChunk;
 }
 
-static void errorAt(Token* token, const char* message) {
+static void errorAt(const Token* token, const char* message) {
 	fprintf(stderr, "[line %d] Error", token->line);
 
 	if(parser.panicMode) return;
@@ -178,7 +178,7 @@ static void endScope() {
 	}
 }
 
-static void parsePrecedence(Precedence precedence) {
+static void parsePrecedence(const Precedence precedence) {
 	advance();
 	const ParseFn prefixRule = getRule(parser.previous.type)->prefix;
 	if (prefixRule == NULL) {
@@ -186,7 +186,7 @@ static void parsePrecedence(Precedence precedence) {
 		return;
 	}
 
-	bool canAssign = precedence <= PREC_ASSIGNMENT;
+	const bool canAssign = precedence <= PREC_ASSIGNMENT;
 	prefixRule(canAssign);
 	while (precedence <= getRule(parser.current.type)->precedence) {
 		advance();
@@ -273,14 +273,14 @@ static void defineVariable(uint8_t global) {
 	emitBytes(OP_DEFINE_GLOBAL, global);
 }
 
-static void unary(bool canAssign) {
+static void unary(const bool canAssign) {
 	const TokenType operatorType = parser.previous.type;
 
 	// Compile the operand.
 	parsePrecedence(PREC_UNARY);
 
-	// Emit the operator instruciton
-	switch (operatorType) {
+	// Emit the operator instruction
+	switch (operatorType) {  // NOLINT(clang-diagnostic-switch-enum)
 		case TOKEN_MINUS: emitByte(OP_NEGATE); break;
 		case TOKEN_BANG: emitByte(OP_NOT); break;
 		case TOKEN_INCREMENT: emitByte(OP_INCREMENT); break;
@@ -294,7 +294,7 @@ static void binary(bool canAssign) {
 	const ParseRule* rule = getRule(operatorType);
 	parsePrecedence((Precedence)(rule->precedence + 1));
 
-	switch (operatorType) {
+	switch (operatorType) {  // NOLINT(clang-diagnostic-switch-enum)
 		case TOKEN_PLUS:			emitByte(OP_ADD); break;
 		case TOKEN_MINUS:			emitByte(OP_SUBTRACT); break;
 		case TOKEN_STAR:			emitByte(OP_MULTIPLY); break;
@@ -310,7 +310,7 @@ static void binary(bool canAssign) {
 }
 
 static void literal(bool canAssign) {
-	switch(parser.previous.type) {
+	switch(parser.previous.type) { // NOLINT(clang-diagnostic-switch-enum)
 		case TOKEN_FALSE: emitByte(OP_FALSE); break;
 		case TOKEN_NIL: emitByte(OP_NIL); break;
 		case TOKEN_TRUE: emitByte(OP_TRUE); break;
@@ -400,7 +400,7 @@ static void synchronize() {
 	while (parser.current.type != TOKEN_EOF) {
 		if (parser.previous.type == TOKEN_SEMICOLON) return;
 
-		switch (parser.current.type) {
+		switch (parser.current.type) { // NOLINT(clang-diagnostic-switch-enum)
 			case TOKEN_CLASS:
 			case TOKEN_FUN:
 			case TOKEN_VAR:
@@ -489,7 +489,7 @@ ParseRule rules[] = {
 
 
 
-static ParseRule* getRule(TokenType type) {
+static ParseRule* getRule(const TokenType type) {
 	return &rules[type];
 }
 

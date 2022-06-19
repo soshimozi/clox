@@ -80,13 +80,14 @@ push(valueType(a op b)); \
 		uint8_t instruction;
 		switch(instruction = READ_BYTE()) {
 			case OP_CONSTANT: {
-				Value constant = READ_CONSTANT();
+				const Value constant = READ_CONSTANT();
 				push(constant);
 				break;
 			}
+
 			case OP_EQUAL: {
-				Value b = pop();
-				Value a = pop();
+				const Value b = pop();
+				const Value a = pop();
 				push(BOOL_VAL(valuesEqual(a, b)));
 				break;
 			}
@@ -98,6 +99,7 @@ push(valueType(a op b)); \
 				}
 				push(NUMBER_VAL((AS_NUMBER(pop()) + 1)));
 				break;
+
 			case OP_DECREMENT: 
 				if (!IS_NUMBER(peek(0))) {
 					runtimeError("Operand must be a number.");
@@ -105,6 +107,7 @@ push(valueType(a op b)); \
 				}
 				push(NUMBER_VAL((AS_NUMBER(pop()) - 1)));
 				break;
+
 			case OP_NIL: push(NIL_VAL); break;
 			case OP_TRUE: push(BOOL_VAL(true)); break;
 			case OP_FALSE: push(BOOL_VAL(false)); break;
@@ -114,9 +117,11 @@ push(valueType(a op b)); \
 			case OP_SUBTRACT: BINARY_OP(NUMBER_VAL, -); break;
 			case OP_MULTIPLY: BINARY_OP(NUMBER_VAL, *); break;
 			case OP_DIVIDE: BINARY_OP(NUMBER_VAL, /); break;
+
 			case OP_NOT:
 				push(BOOL_VAL(isFalsey(pop())));
 				break;
+
 			case OP_NEGATE:
 				if (!IS_NUMBER(peek(0))) {
 					runtimeError("Operand must be a number.");
@@ -124,6 +129,7 @@ push(valueType(a op b)); \
 				}
 				push(NUMBER_VAL(-AS_NUMBER(pop())));
 				break;
+
 			case OP_RETURN: {
 				printValue(pop());
 				printf("\n");

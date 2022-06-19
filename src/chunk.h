@@ -20,6 +20,7 @@ typedef enum {
 	OP_DIVIDE,
 	OP_INCREMENT,
 	OP_DECREMENT,
+	OP_PRINT,
 	OP_RETURN
 } OpCode;
 

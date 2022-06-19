@@ -39,6 +39,8 @@ int disassembleInstruction(Chunk* pChunk, int offset) {
 	switch(instruction) {
 		case OP_RETURN:
 			return simpleInstruction("OP_RETURN", offset);
+		case OP_PRINT:
+			return simpleInstruction("OP_PRINT", offset);
 		case OP_INCREMENT:
 			return simpleInstruction("OP_INCREMENT", offset);
 		case OP_DECREMENT:

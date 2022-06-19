@@ -44,6 +44,8 @@ Parser parser;
 Chunk* compilingChunk;
 
 static void expression();
+static void statement();
+static void declaration();
 static ParseRule* getRule(TokenType type);
 static void parsePrecedence(Precedence precedence);
 
@@ -57,14 +59,18 @@ static void errorAt(Token* token, const char* message) {
 	if(parser.panicMode) return;
 	parser.panicMode = true;
 
-	if(token->type == TOKEN_EOF) {
+	if (token->type == TOKEN_EOF) {
 		fprintf(stderr, " at end");
-	} else if(token->type == TOKEN_ERROR) {
-		// Nothing
-	} else {
-		fprintf(stderr, ": %s\n", message);
-		parser.hadError = true;
 	}
+	else if (token->type == TOKEN_ERROR) {
+		// Nothing.
+	}
+	else {
+		fprintf(stderr, " at '%.*s'", token->length, token->start);
+	}
+
+	fprintf(stderr, ": %s\n", message);
+	parser.hadError = true;
 }
 static void error(const char* message) {
 	errorAt(&parser.previous, message);
@@ -85,6 +91,10 @@ static void advance() {
 	}
 }
 
+static bool check(TokenType type) {
+	return parser.current.type == type;
+}
+
 static void consume(TokenType type, const char* message) {
 	if (parser.current.type == type) {
 		advance();
@@ -92,6 +102,12 @@ static void consume(TokenType type, const char* message) {
 	}
 
 	errorAtCurrent(message);
+}
+
+static bool match(TokenType type) {
+	if (!check(type)) return false;
+	advance();
+	return true;
 }
 
 static void emitByte(uint8_t byte) {
@@ -192,6 +208,22 @@ static void expression() {
 	parsePrecedence(PREC_ASSIGNMENT);
 }
 
+static void printStatement() {
+	expression();
+	consume(TOKEN_SEMICOLON, "Missing semicolon.");
+	emitByte(OP_PRINT);
+}
+
+static void declaration() {
+	statement();
+}
+
+static void statement() {
+	if (match(TOKEN_PRINT)) {
+		printStatement();
+	}
+}
+
 ParseRule rules[] = {
 	[TOKEN_LEFT_PAREN] 		= {grouping, 	NULL,		PREC_NONE},
 	[TOKEN_RIGHT_PAREN] 	= {NULL,		NULL, 	PREC_NONE},
@@ -266,8 +298,12 @@ bool compile(const char* source, Chunk* chunk) {
 	parser.panicMode = false;
 
 	advance();
-	expression();
-	consume(TOKEN_EOF, "Expect end of file expression.");
+	while (!match(TOKEN_EOF)) {
+		declaration();
+	}
+
+	//expression();
+	//consume(TOKEN_EOF, "Expect end of file expression.");
 
 	endCompiler();
 	return !parser.hadError;

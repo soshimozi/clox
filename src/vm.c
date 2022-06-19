@@ -139,7 +139,7 @@ push(valueType(a op b)); \
 			case OP_ADD:
 				if (IS_STRING(peek(0)) && IS_STRING(peek(1))) {
 					concatenate();
-				} else if (IS_NUMBER(peek(0)) && IS_STRING(peek(1))) {
+				} else if (IS_NUMBER(peek(0)) && IS_NUMBER(peek(1))) {
 					const double b = AS_NUMBER(pop());
 					const double a = AS_NUMBER(pop());
 					push(NUMBER_VAL(a + b));
@@ -164,11 +164,14 @@ push(valueType(a op b)); \
 				push(NUMBER_VAL(-AS_NUMBER(pop())));
 				break;
 
-			case OP_RETURN: {
+			case OP_PRINT:
 				printValue(pop());
 				printf("\n");
+				break;
+
+			case OP_RETURN:
+				// return from interpreter
 				return INTERPRET_OK;
-			}
 		}
 	}
 #undef READ_BYTE

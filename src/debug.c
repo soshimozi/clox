@@ -12,19 +12,27 @@ void disassembleChunk(Chunk* pChunk, const char* name) {
 	}
 }
 
-static int simpleInstruction(const char* name, int offset) {
+static int simpleInstruction(const char* name, const int offset) {
 	printf("%s\n", name);
 	return offset + 1;
 }
 
-static int byteInstruction(const char* name, Chunk* chunk, int offset) {
-	uint8_t slot = chunk->code[offset + 1];
+static int byteInstruction(const char* name, const Chunk* chunk, const int offset) {
+	const uint8_t slot = chunk->code[offset + 1];
 	printf("%-16s %4d\n", name, slot);
 	return offset + 2;
 }
 
-static int constantInstruction(const char* name, Chunk* chunk, int offset) {
-	uint8_t constant = chunk->code[offset + 1];
+static int jumpInstruction(const char* name, const int sign, const Chunk* chunk, const int offset) {
+	uint16_t jump = (uint16_t)(chunk->code[offset + 1] << 8);
+	jump |= chunk->code[offset + 2];
+
+	printf("%-16s %4d -> %d\n", name, offset, offset + 3 + sign * jump);
+	return offset + 3;
+}
+
+static int constantInstruction(const char* name, const Chunk* chunk, const int offset) {
+	const uint8_t constant = chunk->code[offset + 1];
 	printf("%-16s %4d '", name, constant);
 	printValue(chunk->constants.values[constant]);
 	printf("'\n");
@@ -32,7 +40,7 @@ static int constantInstruction(const char* name, Chunk* chunk, int offset) {
 	return offset + 2;
 }
 
-int disassembleInstruction(Chunk* pChunk, int offset) {
+int disassembleInstruction(const Chunk* pChunk, const int offset) {
 	printf("%04d ", offset);
 
 	if(offset > 0 && pChunk->lines[offset] == pChunk->lines[offset - 1]) {
@@ -41,7 +49,7 @@ int disassembleInstruction(Chunk* pChunk, int offset) {
 		printf("%4d ", pChunk->lines[offset]);
 	}
 
-	uint8_t instruction = pChunk->code[offset];
+	const uint8_t instruction = pChunk->code[offset];
 	switch(instruction) {
 		case OP_RETURN:
 			return simpleInstruction("OP_RETURN", offset);
@@ -89,8 +97,12 @@ int disassembleInstruction(Chunk* pChunk, int offset) {
 			return byteInstruction("OP_SET_LOCAL", pChunk, offset);
 		case OP_FALSE:
 			return simpleInstruction("OP_FALSE", offset);
+		case OP_JUMP:
+			return jumpInstruction("OP_JUMP", 1, pChunk, offset);
+		case OP_JUMP_IF_FALSE:
+			return jumpInstruction("OP_JUMP_IF_FALSE", 1, pChunk, offset);
 		default:
-			printf("Uknown opcode %d\n", instruction);
+			printf("Unknown opcode %d\n", instruction);
 			return offset + 1;
 	}
 }

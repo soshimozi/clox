@@ -293,11 +293,22 @@ static void defineVariable(uint8_t global) {
 }
 
 static void and_(bool canAssign) {
-	int endJump = emitJump(OP_JUMP_IF_FALSE);
+	const int endJump = emitJump(OP_JUMP_IF_FALSE);
 
 	emitByte(OP_POP);
 	parsePrecedence(PREC_AND);
 
+	patchJump(endJump);
+}
+
+static void or_(bool canAssign) {
+	const int elseJump = emitJump(OP_JUMP_IF_FALSE);
+	const int endJump = emitJump(OP_JUMP);
+
+	patchJump(elseJump);
+	emitByte(OP_POP);
+
+	parsePrecedence(PREC_OR);
 	patchJump(endJump);
 }
 
@@ -440,6 +451,10 @@ static void printStatement() {
 	emitByte(OP_PRINT);
 }
 
+static void whileStatement() {
+	
+}
+
 static void synchronize() {
 	parser.panicMode = false;
 	while (parser.current.type != TOKEN_EOF) {
@@ -522,7 +537,7 @@ ParseRule rules[] = {
 	[TOKEN_FUN]				= {NULL, 		NULL,		PREC_NONE},
 	[TOKEN_IF]				= {NULL, 		NULL,		PREC_NONE},
 	[TOKEN_NIL]				= {literal,	NULL,		PREC_NONE},
-	[TOKEN_OR]				= {NULL, 		NULL,		PREC_NONE},
+	[TOKEN_OR]				= {NULL, 		or_,		PREC_OR},
 	[TOKEN_PRINT]			= {NULL, 		NULL,		PREC_NONE},
 	[TOKEN_RETURN]			= {NULL, 		NULL,		PREC_NONE},
 	[TOKEN_SUPER]			= {NULL, 		NULL,		PREC_NONE},
@@ -553,9 +568,6 @@ bool compile(const char* source, Chunk* chunk) {
 	while (!match(TOKEN_EOF)) {
 		declaration();
 	}
-
-	//expression();
-	//consume(TOKEN_EOF, "Expect end of file expression.");
 
 	endCompiler();
 	return !parser.hadError;

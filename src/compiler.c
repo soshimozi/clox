@@ -68,7 +68,7 @@ static Chunk* currentChunk() {
 	return compilingChunk;
 }
 
-static void errorAt(Token* token, const char* message) {
+static void errorAt(const Token* token, const char* message) {
 	fprintf(stderr, "[line %d] Error", token->line);
 
 	if(parser.panicMode) return;
@@ -134,6 +134,23 @@ static void emitBytes(uint8_t byte1, uint8_t byte2) {
 	emitByte(byte2);
 }
 
+static void emitLoop(const int loopStart) {
+	emitByte(OP_LOOP);
+
+	const int offset = currentChunk()->count - loopStart + 2;
+	if (offset > UINT16_MAX) error("Loop body too large.");
+
+	emitByte((offset >> 8) & 0xff);
+	emitByte(offset & 0xff);
+}
+
+static int emitJump(const uint8_t instruction) {
+	emitByte(instruction);
+	emitByte(0xff);
+	emitByte(0xff);
+	return currentChunk()->count - 2;
+}
+
 static void emitReturn() {
 	emitByte(OP_RETURN);
 }
@@ -145,6 +162,18 @@ static uint8_t makeConstant(Value value) {
 	}
 
 	return (uint8_t)constant;
+}
+
+static void patchJump(int offset) {
+	// -2 to adjust for the bytecode for the jump offset itself.
+	int jump = currentChunk()->count - offset - 2;
+
+	if(jump > UINT16_MAX) {
+		error("Too much code to jump over.");
+	}
+
+	currentChunk()->code[offset] = (jump >> 8) & 0xff;
+	currentChunk()->code[offset + 1] = jump & 0xff;
 }
 
 static void emitConstant(Value value) {
@@ -178,7 +207,7 @@ static void endScope() {
 	}
 }
 
-static void parsePrecedence(Precedence precedence) {
+static void parsePrecedence(const Precedence precedence) {
 	advance();
 	const ParseFn prefixRule = getRule(parser.previous.type)->prefix;
 	if (prefixRule == NULL) {
@@ -186,7 +215,7 @@ static void parsePrecedence(Precedence precedence) {
 		return;
 	}
 
-	bool canAssign = precedence <= PREC_ASSIGNMENT;
+	const bool canAssign = precedence <= PREC_ASSIGNMENT;
 	prefixRule(canAssign);
 	while (precedence <= getRule(parser.current.type)->precedence) {
 		advance();
@@ -273,18 +302,38 @@ static void defineVariable(uint8_t global) {
 	emitBytes(OP_DEFINE_GLOBAL, global);
 }
 
-static void unary(bool canAssign) {
+static void and_(bool canAssign) {
+	const int endJump = emitJump(OP_JUMP_IF_FALSE);
+
+	emitByte(OP_POP);
+	parsePrecedence(PREC_AND);
+
+	patchJump(endJump);
+}
+
+static void or_(bool canAssign) {
+	const int elseJump = emitJump(OP_JUMP_IF_FALSE);
+	const int endJump = emitJump(OP_JUMP);
+
+	patchJump(elseJump);
+	emitByte(OP_POP);
+
+	parsePrecedence(PREC_OR);
+	patchJump(endJump);
+}
+
+static void unary(const bool canAssign) {
 	const TokenType operatorType = parser.previous.type;
 
 	// Compile the operand.
 	parsePrecedence(PREC_UNARY);
 
-	// Emit the operator instruciton
-	switch (operatorType) {
+	// Emit the operator instruction
+	switch (operatorType) {  // NOLINT(clang-diagnostic-switch-enum)
 		case TOKEN_MINUS: emitByte(OP_NEGATE); break;
 		case TOKEN_BANG: emitByte(OP_NOT); break;
-		case TOKEN_INCREMENT: emitByte(OP_INCREMENT); break;
-		case TOKEN_DECREMENT: emitByte(OP_DECREMENT); break;
+		case TOKEN_INCREMENT: emitByte(OP_ADD); break;
+		case TOKEN_DECREMENT: emitByte(OP_SUBTRACT); break;
 		default: return; // Unreachable;
 	}
 }
@@ -294,7 +343,7 @@ static void binary(bool canAssign) {
 	const ParseRule* rule = getRule(operatorType);
 	parsePrecedence((Precedence)(rule->precedence + 1));
 
-	switch (operatorType) {
+	switch (operatorType) {  // NOLINT(clang-diagnostic-switch-enum)
 		case TOKEN_PLUS:			emitByte(OP_ADD); break;
 		case TOKEN_MINUS:			emitByte(OP_SUBTRACT); break;
 		case TOKEN_STAR:			emitByte(OP_MULTIPLY); break;
@@ -310,7 +359,7 @@ static void binary(bool canAssign) {
 }
 
 static void literal(bool canAssign) {
-	switch(parser.previous.type) {
+	switch(parser.previous.type) { // NOLINT(clang-diagnostic-switch-enum)
 		case TOKEN_FALSE: emitByte(OP_FALSE); break;
 		case TOKEN_NIL: emitByte(OP_NIL); break;
 		case TOKEN_TRUE: emitByte(OP_TRUE); break;
@@ -389,10 +438,88 @@ static void expressionStatement() {
 	emitByte(OP_POP);
 }
 
+static void forStatement() {
+	beginScope();
+	consume(TOKEN_LEFT_PAREN, "Expected '(' after 'for'.");
+	if (match(TOKEN_SEMICOLON)) {
+		// no initalizer
+	}
+	else if (match(TOKEN_VAR)) {
+		varDeclaration();
+	} else {
+		expressionStatement();
+	}
+
+	int loopStart = currentChunk()->count;
+	int exitJump = -1;
+	if (!match(TOKEN_SEMICOLON)) {
+		expression();
+		consume(TOKEN_SEMICOLON, "Expected ');' after loop condition'");
+
+		// Jump out of the lop if the condition is false
+		exitJump = emitJump(OP_JUMP_IF_FALSE);
+		emitByte(OP_POP);	// Condition
+	}
+
+	if( !match(TOKEN_RIGHT_PAREN)) {
+		const int bodyJump = emitJump(OP_JUMP);
+		const int incrementStart = currentChunk()->count;
+		expression();
+		emitByte(OP_POP);
+		consume(TOKEN_RIGHT_PAREN, "Expected ')' after for clauses.");
+
+		emitLoop(loopStart);
+		loopStart = incrementStart;
+		patchJump(bodyJump);
+	}
+
+	statement();
+	emitLoop(loopStart);
+	if (exitJump != -1) {
+		patchJump(exitJump);
+		emitByte(OP_POP);
+	}
+
+	endScope();
+}
+
+static void ifStatement() {
+	consume(TOKEN_LEFT_PAREN, "Expected '(' after if.");
+	expression();
+	consume(TOKEN_RIGHT_PAREN, "Expected ')' after condition.");
+
+	const int theJump = emitJump(OP_JUMP_IF_FALSE);
+	emitByte(OP_POP);
+	statement();
+
+	const int elseJump = emitJump(OP_JUMP);
+
+	patchJump(theJump);
+	emitByte(OP_POP);
+	if (match(TOKEN_ELSE)) statement();
+	patchJump(elseJump);
+}
+
 static void printStatement() {
 	expression();
 	consume(TOKEN_SEMICOLON, "Missing semicolon.");
 	emitByte(OP_PRINT);
+}
+
+static void whileStatement() {
+	const int loopStart = currentChunk()->count;
+
+	consume(TOKEN_LEFT_PAREN, "Expect '(' after while.");
+	expression();
+	consume(TOKEN_RIGHT_PAREN, "Expect ')' after expression.");
+
+	const int exitJump = emitJump(OP_JUMP_IF_FALSE);
+	emitByte(OP_POP);
+	statement();
+	emitLoop(loopStart);
+
+	patchJump(exitJump);
+	emitByte(OP_POP);
 }
 
 static void synchronize() {
@@ -400,7 +527,7 @@ static void synchronize() {
 	while (parser.current.type != TOKEN_EOF) {
 		if (parser.previous.type == TOKEN_SEMICOLON) return;
 
-		switch (parser.current.type) {
+		switch (parser.current.type) { // NOLINT(clang-diagnostic-switch-enum)
 			case TOKEN_CLASS:
 			case TOKEN_FUN:
 			case TOKEN_VAR:
@@ -433,6 +560,14 @@ static void declaration() {
 static void statement() {
 	if (match(TOKEN_PRINT)) {
 		printStatement();
+	}
+	else if (match(TOKEN_FOR))	{
+		forStatement();
+	}
+	else if (match(TOKEN_IF)) {
+		ifStatement();
+	} else if (match(TOKEN_WHILE)) {
+		whileStatement();
 	} else if (match(TOKEN_LEFT_BRACE)) {
 		beginScope();
 		block();
@@ -449,8 +584,8 @@ ParseRule rules[] = {
 	[TOKEN_RIGHT_BRACE] 	= {NULL, 		NULL, 	PREC_NONE},
 	[TOKEN_COMMA] 			= {NULL, 		NULL, 	PREC_NONE},
 	[TOKEN_DOT] 			= {NULL, 		NULL, 	PREC_NONE},
-	[TOKEN_INCREMENT]		= {unary,		NULL,		PREC_TERM},
-	[TOKEN_DECREMENT]		= {unary,		NULL, 	PREC_TERM},
+	[TOKEN_INCREMENT]		= {unary,		unary,	PREC_TERM},
+	[TOKEN_DECREMENT]		= {unary,		unary, 	PREC_TERM},
 	[TOKEN_MINUS]			= {unary,		binary,	PREC_TERM},
 	[TOKEN_PLUS]			= {unary,		binary,	PREC_TERM},
 	[TOKEN_SEMICOLON]		= {NULL, 		NULL, 	PREC_NONE},
@@ -467,7 +602,7 @@ ParseRule rules[] = {
 	[TOKEN_IDENTIFIER]		= {variable,	NULL,		PREC_NONE},
 	[TOKEN_STRING]			= {string, 	NULL,		PREC_NONE},
 	[TOKEN_NUMBER]			= {number, 	NULL,		PREC_NONE},
-	[TOKEN_AND]				= {NULL, 		NULL,		PREC_NONE},
+	[TOKEN_AND]				= {NULL, 		and_,		PREC_AND},
 	[TOKEN_CLASS]			= {NULL, 		NULL,		PREC_NONE},
 	[TOKEN_ELSE]			= {NULL, 		NULL,		PREC_NONE},
 	[TOKEN_FALSE]			= {literal,	NULL,		PREC_NONE},
@@ -475,7 +610,7 @@ ParseRule rules[] = {
 	[TOKEN_FUN]				= {NULL, 		NULL,		PREC_NONE},
 	[TOKEN_IF]				= {NULL, 		NULL,		PREC_NONE},
 	[TOKEN_NIL]				= {literal,	NULL,		PREC_NONE},
-	[TOKEN_OR]				= {NULL, 		NULL,		PREC_NONE},
+	[TOKEN_OR]				= {NULL, 		or_,		PREC_OR},
 	[TOKEN_PRINT]			= {NULL, 		NULL,		PREC_NONE},
 	[TOKEN_RETURN]			= {NULL, 		NULL,		PREC_NONE},
 	[TOKEN_SUPER]			= {NULL, 		NULL,		PREC_NONE},
@@ -489,7 +624,7 @@ ParseRule rules[] = {
 
 
 
-static ParseRule* getRule(TokenType type) {
+static ParseRule* getRule(const TokenType type) {
 	return &rules[type];
 }
 
@@ -506,9 +641,6 @@ bool compile(const char* source, Chunk* chunk) {
 	while (!match(TOKEN_EOF)) {
 		declaration();
 	}
-
-	//expression();
-	//consume(TOKEN_EOF, "Expect end of file expression.");
 
 	endCompiler();
 	return !parser.hadError;

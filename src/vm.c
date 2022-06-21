@@ -2,7 +2,6 @@
 #include <stdio.h>
 
 #include "common.h"
-#include "debug.h"
 #include "vm.h"
 
 #include <string.h>
@@ -20,7 +19,7 @@ static void resetStack() {
 static void runtimeError(const char* format, ...) {
 	va_list args;
 	va_start(args, format);
-	vfprintf(stderr, format, args);
+	vfprintf(stderr, format, args);  // NOLINT(clang-diagnostic-format-nonliteral)
 	va_end(args);
 	fputs("\n", stderr);
 
@@ -30,14 +29,14 @@ static void runtimeError(const char* format, ...) {
 	resetStack();
 }
 
-void initVM() {
+void initVm(void) {
 	resetStack();
 	vm.objects = NULL;
 	initTable(&vm.globals);
 	initTable(&vm.strings);
 }
 
-void freeVM() {
+void freeVm(void) {
 	freeTable(&vm.globals);
 	freeTable(&vm.strings);
 	freeObjects();
@@ -80,6 +79,8 @@ static InterpretResult run() {
 #define READ_BYTE() (*vm.ip++)
 #define READ_CONSTANT() (vm.chunk->constants.values[READ_BYTE()])
 #define READ_STRING() AS_STRING(READ_CONSTANT())
+#define READ_SHORT() \
+	(vm.ip += 2, (uint16_t)((vm.ip[-2] << 8) | vm.ip[-1]))
 #define BINARY_OP(valueType, op) \
 do { \
 if (!IS_NUMBER(peek(0)) || !IS_NUMBER(peek(1))) { \
@@ -103,7 +104,9 @@ push(valueType(a op b)); \
 		printf("\n");
 		disassembleInstruction(vm.chunk, (int)(vm.ip - vm.chunk->code));
 #endif		
+		// ReSharper disable once CppEntityAssignedButNoRead
 		uint8_t instruction;
+		// ReSharper disable once CppDefaultCaseNotHandledInSwitchStatement
 		switch(instruction = READ_BYTE()) {
 			case OP_CONSTANT: {
 				const Value constant = READ_CONSTANT();
@@ -211,6 +214,24 @@ push(valueType(a op b)); \
 			case OP_SET_LOCAL: {
 				uint8_t slot = READ_BYTE();
 				vm.stack[slot] = peek(0);
+				break;
+			}
+
+			case OP_JUMP_IF_FALSE: {
+				const uint16_t offset = READ_SHORT();
+				if (isFalsey(peek(0))) vm.ip += offset;
+				break;
+			}
+
+			case OP_JUMP: {
+				const uint16_t offset = READ_SHORT();
+				vm.ip += offset;
+				break;
+			}
+
+			case OP_LOOP: {
+				const uint16_t offset = READ_SHORT();
+				vm.ip -= offset;
 				break;
 			}
 

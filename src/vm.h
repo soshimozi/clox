@@ -25,8 +25,8 @@ typedef enum {
 
 extern VM vm;
 
-void initVM();
-void freeVM();
+void initVm();
+void freeVm();
 InterpretResult interpret(const char* source);
 void push(Value value);
 Value pop();

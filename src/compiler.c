@@ -134,7 +134,17 @@ static void emitBytes(uint8_t byte1, uint8_t byte2) {
 	emitByte(byte2);
 }
 
-static int emitJump(uint8_t instruction) {
+static void emitLoop(const int loopStart) {
+	emitByte(OP_LOOP);
+
+	const int offset = currentChunk()->count - loopStart + 2;
+	if (offset > UINT16_MAX) error("Loop body too large.");
+
+	emitByte((offset >> 8) & 0xff);
+	emitByte(offset & 0xff);
+}
+
+static int emitJump(const uint8_t instruction) {
 	emitByte(instruction);
 	emitByte(0xff);
 	emitByte(0xff);
@@ -322,8 +332,8 @@ static void unary(const bool canAssign) {
 	switch (operatorType) {  // NOLINT(clang-diagnostic-switch-enum)
 		case TOKEN_MINUS: emitByte(OP_NEGATE); break;
 		case TOKEN_BANG: emitByte(OP_NOT); break;
-		case TOKEN_INCREMENT: emitByte(OP_INCREMENT); break;
-		case TOKEN_DECREMENT: emitByte(OP_DECREMENT); break;
+		case TOKEN_INCREMENT: emitByte(OP_ADD); break;
+		case TOKEN_DECREMENT: emitByte(OP_SUBTRACT); break;
 		default: return; // Unreachable;
 	}
 }
@@ -452,7 +462,19 @@ static void printStatement() {
 }
 
 static void whileStatement() {
-	
+	const int loopStart = currentChunk()->count;
+
+	consume(TOKEN_LEFT_PAREN, "Expect '(' after while.");
+	expression();
+	consume(TOKEN_RIGHT_PAREN, "Expect ')' after expression.");
+
+	const int exitJump = emitJump(OP_JUMP_IF_FALSE);
+	emitByte(OP_POP);
+	statement();
+	emitLoop(loopStart);
+
+	patchJump(exitJump);
+	emitByte(OP_POP);
 }
 
 static void synchronize() {
@@ -493,8 +515,11 @@ static void declaration() {
 static void statement() {
 	if (match(TOKEN_PRINT)) {
 		printStatement();
-	} else if (match(TOKEN_IF)) {
+	}
+	else if (match(TOKEN_IF)) {
 		ifStatement();
+	} else if (match(TOKEN_WHILE)) {
+		whileStatement();
 	} else if (match(TOKEN_LEFT_BRACE)) {
 		beginScope();
 		block();
@@ -511,8 +536,8 @@ ParseRule rules[] = {
 	[TOKEN_RIGHT_BRACE] 	= {NULL, 		NULL, 	PREC_NONE},
 	[TOKEN_COMMA] 			= {NULL, 		NULL, 	PREC_NONE},
 	[TOKEN_DOT] 			= {NULL, 		NULL, 	PREC_NONE},
-	[TOKEN_INCREMENT]		= {unary,		NULL,		PREC_TERM},
-	[TOKEN_DECREMENT]		= {unary,		NULL, 	PREC_TERM},
+	[TOKEN_INCREMENT]		= {unary,		unary,	PREC_TERM},
+	[TOKEN_DECREMENT]		= {unary,		unary, 	PREC_TERM},
 	[TOKEN_MINUS]			= {unary,		binary,	PREC_TERM},
 	[TOKEN_PLUS]			= {unary,		binary,	PREC_TERM},
 	[TOKEN_SEMICOLON]		= {NULL, 		NULL, 	PREC_NONE},

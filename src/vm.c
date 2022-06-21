@@ -229,6 +229,12 @@ push(valueType(a op b)); \
 				break;
 			}
 
+			case OP_LOOP: {
+				const uint16_t offset = READ_SHORT();
+				vm.ip -= offset;
+				break;
+			}
+
 
 			case OP_RETURN:
 				// return from interpreter
